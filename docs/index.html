@@ -811,42 +811,20 @@ async function edgarGet(url) {
 async function lookupCIK(ticker) {
   const sym = ticker.toUpperCase();
   if (_tickerMapCache?.[sym]) return _tickerMapCache[sym];
-  if (!_tickerMapCache) _tickerMapCache = {};
 
-  // efts.sec.gov powers the EDGAR browser search UI — it is CORS-enabled
-  // Avoids www.sec.gov which blocks browser CORS requests
+  // Fetch the ticker→CIK map bundled with the site (same-origin, no CORS).
+  // www.sec.gov and efts.sec.gov both lack CORS headers for cross-origin browsers.
   txt('el-loading-txt', 'Finding company in SEC EDGAR…');
-  const sr = await fetch(`https://efts.sec.gov/LATEST/search-index?q=%22${encodeURIComponent(sym)}%22&forms=10-K&dateRange=custom&startdt=2022-01-01`);
-  if (!sr.ok) throw new Error(`SEC EDGAR search: HTTP ${sr.status}`);
-  const sj = await sr.json();
-  const hits = sj.hits?.hits ?? [];
-  if (!hits.length) throw new Error(`"${ticker}" not found in SEC EDGAR — check the ticker symbol`);
-
-  // Parallel-fetch submissions for top candidates and verify the ticker matches
-  const candidates = [...new Set(hits.slice(0, 5).map(h => h._source?.entity_id).filter(Boolean))];
-  const subs = await Promise.allSettled(
-    candidates.map(id => {
-      const cik = String(id).padStart(10, '0');
-      return fetch(`https://data.sec.gov/submissions/CIK${cik}.json`)
-        .then(r => r.json())
-        .then(d => ({ cik, tickers: d.tickers ?? [] }));
-    })
-  );
-
-  for (const res of subs) {
-    if (res.status !== 'fulfilled') continue;
-    const { cik, tickers } = res.value;
-    if (tickers.some(t => t.toUpperCase() === sym)) {
-      _tickerMapCache[sym] = cik;
-      return cik;
-    }
+  const r = await fetch('./company_tickers.json');
+  if (!r.ok) throw new Error(`Could not load ticker map: HTTP ${r.status}`);
+  const raw = await r.json();
+  _tickerMapCache = {};
+  for (const entry of Object.values(raw)) {
+    _tickerMapCache[entry.ticker.toUpperCase()] = String(entry.cik_str).padStart(10, '0');
   }
 
-  // Fallback: use first EFTS result without ticker verification
-  const rawId = hits[0]._source?.entity_id;
-  if (!rawId) throw new Error(`CIK not found for "${ticker}"`);
-  const cik = String(rawId).padStart(10, '0');
-  _tickerMapCache[sym] = cik;
+  const cik = _tickerMapCache[sym];
+  if (!cik) throw new Error(`"${ticker}" not found in SEC EDGAR — check the ticker symbol`);
   return cik;
 }
 
