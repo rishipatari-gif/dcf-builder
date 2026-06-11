@@ -336,7 +336,7 @@
   <div class="flex items-end justify-between">
     <div>
       <h1 class="font-mono font-bold text-xl tracking-tight" style="color:var(--accent);">DCF Builder</h1>
-      <p class="text-xs mt-1" style="color:var(--muted);">Discounted Cash Flow · Public Comps · LBO — powered by SEC EDGAR &amp; Yahoo Finance</p>
+      <p class="text-xs mt-1" style="color:var(--muted);">Discounted Cash Flow · Public Comps · LBO — powered by Financial Modeling Prep</p>
     </div>
     <button id="btn-reset" class="btn-reset hidden" onclick="resetDCF()" title="Reset sliders to initial defaults for this ticker">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -349,7 +349,7 @@
 
   <!-- INPUT ROW -->
   <div class="card p-5">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <div>
         <div class="chip mb-2">Ticker Symbol</div>
         <div class="ac-wrap">
@@ -361,12 +361,17 @@
           <div id="ac-dropdown" class="ac-dropdown" style="display:none;"></div>
         </div>
       </div>
+      <div>
+        <div class="chip mb-2">FMP API Key <span style="color:var(--muted);font-weight:400;">— free at financialmodelingprep.com</span></div>
+        <input id="inp-api-key" class="field" type="password" placeholder="Paste your free API key…"
+               oninput="saveKey()" autocomplete="off" spellcheck="false" />
+      </div>
       <div class="flex flex-col justify-end">
         <button class="btn-primary" onclick="runDCF()">Run Analysis</button>
       </div>
     </div>
     <p class="text-xs mt-3" style="color:#374151;">
-      Financials via SEC EDGAR 10-K · price &amp; comps via Yahoo Finance · no API key required
+      Financials via Financial Modeling Prep · free tier · 250 calls/day · key saved in browser
     </p>
   </div>
 
@@ -797,172 +802,89 @@ let compTickers = [];
 let compsLoaded = false;
 let lboInited = false;
 
+function saveKey() {
+  const k = el('inp-api-key')?.value.trim();
+  if (k) localStorage.setItem('fmp_key', k);
+}
+
+// Restore saved API key on load
+document.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('fmp_key');
+  if (saved && el('inp-api-key')) el('inp-api-key').value = saved;
+});
+
 /* ─────────────────────────────────────────
-   SEC EDGAR helpers (runs in browser — EDGAR supports CORS)
+   Financial Modeling Prep (FMP) — CORS-enabled, free tier 250 calls/day
+   Get a free key at: financialmodelingprep.com/developer/docs
 ───────────────────────────────────────── */
-let _tickerMapCache = null;
+const FMP_BASE = 'https://financialmodelingprep.com/api/v3';
 
-async function edgarGet(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`SEC EDGAR ${r.status} — ${url}`);
-  return r.json();
+function getFMPKey() {
+  return el('inp-api-key')?.value.trim() || localStorage.getItem('fmp_key') || '';
 }
 
-async function lookupCIK(ticker) {
-  const sym = ticker.toUpperCase();
-  if (_tickerMapCache?.[sym]) return _tickerMapCache[sym];
-
-  // Fetch the ticker→CIK map bundled with the site (same-origin, no CORS).
-  // www.sec.gov and efts.sec.gov both lack CORS headers for cross-origin browsers.
-  txt('el-loading-txt', 'Finding company in SEC EDGAR…');
-  const r = await fetch('./company_tickers.json');
-  if (!r.ok) throw new Error(`Could not load ticker map: HTTP ${r.status}`);
-  const raw = await r.json();
-  _tickerMapCache = {};
-  for (const entry of Object.values(raw)) {
-    _tickerMapCache[entry.ticker.toUpperCase()] = String(entry.cik_str).padStart(10, '0');
-  }
-
-  const cik = _tickerMapCache[sym];
-  if (!cik) throw new Error(`"${ticker}" not found in SEC EDGAR — check the ticker symbol`);
-  return cik;
-}
-
-function extractAnnual(concept, limit = 5) {
-  if (!concept?.units) return [];
-  const vals = concept.units.USD ?? concept.units.shares ?? concept.units.pure ?? [];
-  const annual = vals.filter(u => (u.form === '10-K' || u.form === '10-K/A') && u.fp === 'FY');
-  const byFY = {};
-  for (const u of annual) {
-    if (!byFY[u.fy] || u.filed > byFY[u.fy].filed) byFY[u.fy] = u;
-  }
-  return Object.values(byFY)
-    .sort((a, b) => b.fy - a.fy)
-    .slice(0, limit)
-    .map(u => ({ year: String(u.fy), date: u.end, value: u.val }));
-}
-
-function edgarPick(gaap, ...names) {
-  for (const n of names) {
-    if (gaap[n]) {
-      const data = extractAnnual(gaap[n]);
-      if (data.length) return data;
-    }
-  }
-  return [];
-}
-
-function toMap(arr) {
-  const m = {};
-  for (const { year, value } of arr) m[year] = value;
-  return m;
+async function fmpGet(path) {
+  const key = getFMPKey();
+  if (!key) throw new Error('Enter your free FMP API key in the field above, then try again');
+  const sep = path.includes('?') ? '&' : '?';
+  const r   = await fetch(`${FMP_BASE}${path}${sep}apikey=${key}`);
+  if (r.status === 401 || r.status === 403) throw new Error('Invalid FMP API key — get a free key at financialmodelingprep.com');
+  if (!r.ok) throw new Error(`FMP API: HTTP ${r.status}`);
+  const data = await r.json();
+  if (data?.['Error Message']) throw new Error(data['Error Message']);
+  if (Array.isArray(data) && data.length === 0) throw new Error(`No FMP data found — check the ticker symbol`);
+  return data;
 }
 
 async function fetchFinancials(ticker) {
   const symbol = ticker.toUpperCase();
 
-  // 1. Resolve CIK
-  const cik = await lookupCIK(symbol);
+  const key = getFMPKey();
+  if (key) localStorage.setItem('fmp_key', key);
 
-  // 2. Fetch XBRL facts
-  txt('el-loading-txt', 'Fetching SEC EDGAR 10-K data…');
-  const facts = await edgarGet(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`);
-  const gaap = facts.facts?.['us-gaap'];
-  if (!gaap) throw new Error('No US-GAAP XBRL data found in EDGAR for this ticker');
+  txt('el-loading-txt', 'Fetching financial statements…');
+  const [incomeArr, bsArr, cfArr, profArr] = await Promise.all([
+    fmpGet(`/income-statement/${symbol}?period=annual&limit=5`),
+    fmpGet(`/balance-sheet-statement/${symbol}?period=annual&limit=5`),
+    fmpGet(`/cash-flow-statement/${symbol}?period=annual&limit=5`),
+    fmpGet(`/profile/${symbol}`),
+  ]);
 
-  // 3. Pull metrics
-  const revenue         = edgarPick(gaap, 'Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'SalesRevenueNet', 'RevenuesNetOfInterestExpense', 'SalesRevenueGoodsNet');
-  const grossProfit     = edgarPick(gaap, 'GrossProfit');
-  const operatingIncome = edgarPick(gaap, 'OperatingIncomeLoss');
-  const netIncome       = edgarPick(gaap, 'NetIncomeLoss', 'ProfitLoss');
-  const operatingCF     = edgarPick(gaap, 'NetCashProvidedByUsedInOperatingActivities');
-  const capex           = edgarPick(gaap, 'PaymentsToAcquirePropertyPlantAndEquipment', 'CapitalExpenditureDiscontinuedOperations');
-  const cashEq          = edgarPick(gaap, 'CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents', 'CashAndCashEquivalentsAtCarryingValue', 'CashCashEquivalentsAndShortTermInvestments');
-  const longTermDebt    = edgarPick(gaap, 'LongTermDebtNoncurrent', 'LongTermDebt');
-  const shortTermDebt   = edgarPick(gaap, 'ShortTermBorrowings', 'DebtCurrent');
-  const sharesOut       = edgarPick(gaap, 'CommonStockSharesOutstanding');
+  if (cfArr.length < 2) throw new Error('Fewer than 2 years of cash flow data — try a different ticker');
 
-  if (operatingCF.length < 2) {
-    throw new Error('Fewer than 2 years of operating cash flow on EDGAR — try a different ticker');
-  }
+  const prof   = profArr[0];
+  const shares = prof.sharesOutstanding
+    ?? (prof.mktCap && prof.price ? prof.mktCap / prof.price : 1);
 
-  // 4. Fetch current price from Yahoo Finance (v8/finance/chart is CORS-friendly)
-  txt('el-loading-txt', 'Fetching current price…');
-  let live = { price: 0, mktCap: 0, beta: 1.0, companyName: facts.entityName, sector: '' };
-  try {
-    const yr = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`);
-    if (yr.ok) {
-      const yj = await yr.json();
-      const meta = yj.chart?.result?.[0]?.meta ?? {};
-      live.price      = meta.regularMarketPrice ?? 0;
-      live.mktCap     = meta.marketCap ?? 0;
-      live.companyName = meta.longName ?? meta.shortName ?? facts.entityName;
-    }
-  } catch (_) {}
-
-  // 5. Try to get beta + sector from quoteSummary
-  try {
-    const qr = await fetch(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=assetProfile%2CdefaultKeyStatistics`);
-    if (qr.ok) {
-      const qj = await qr.json();
-      const res0 = qj.quoteSummary?.result?.[0] ?? {};
-      live.beta   = res0.defaultKeyStatistics?.beta ?? 1.0;
-      live.sector = res0.assetProfile?.sector ?? '';
-    }
-  } catch (_) {}
-
-  // 6. Align years
-  const years  = operatingCF.map(y => y.year);
-  const revM   = toMap(revenue);
-  const gpM    = toMap(grossProfit);
-  const ebitM  = toMap(operatingIncome);
-  const niM    = toMap(netIncome);
-  const ocfM   = toMap(operatingCF);
-  const cxM    = toMap(capex);
-  const cashM  = toMap(cashEq);
-  const ltdM   = toMap(longTermDebt);
-  const stdM   = toMap(shortTermDebt);
-  const shrM   = toMap(sharesOut);
-
-  const latestYear  = years[0];
-  const sharesValue = shrM[latestYear] ?? (live.mktCap && live.price ? live.mktCap / live.price : 1);
-
-  const profile = [{
-    symbol,
-    companyName:       live.companyName,
-    sector:            live.sector,
-    price:             live.price,
-    mktCap:            live.mktCap || (live.price * sharesValue),
-    beta:              live.beta,
-    sharesOutstanding: sharesValue,
-  }];
-
-  const income = years.map(yr => ({
-    calendarYear:    yr,
-    revenue:         revM[yr]  ?? 0,
-    grossProfit:     gpM[yr]   ?? 0,
-    operatingIncome: ebitM[yr] ?? 0,
-    netIncome:       niM[yr]   ?? 0,
-  }));
-
-  const cashFlow = years.map(yr => {
-    const ocf = ocfM[yr] ?? 0;
-    const cx  = cxM[yr]  ?? 0;
-    return {
-      calendarYear:       yr,
-      operatingCashFlow:  ocf,
-      capitalExpenditure: -cx,
-      freeCashFlow:       ocf - cx,
-    };
-  });
-
-  const balanceSheet = years.map(yr => ({
-    calendarYear:           yr,
-    cashAndCashEquivalents: cashM[yr] ?? 0,
-    totalDebt:              (ltdM[yr] ?? 0) + (stdM[yr] ?? 0),
-  }));
-
-  return { income, balanceSheet, cashFlow, profile };
+  return {
+    profile: [{
+      symbol,
+      companyName:       prof.companyName ?? symbol,
+      sector:            prof.sector ?? '',
+      price:             prof.price ?? 0,
+      mktCap:            prof.mktCap ?? 0,
+      beta:              prof.beta ?? 1.0,
+      sharesOutstanding: shares,
+    }],
+    income: incomeArr.map(r => ({
+      calendarYear:    r.calendarYear ?? r.date?.slice(0, 4) ?? '',
+      revenue:         r.revenue         ?? 0,
+      grossProfit:     r.grossProfit     ?? 0,
+      operatingIncome: r.operatingIncome ?? 0,
+      netIncome:       r.netIncome       ?? 0,
+    })),
+    balanceSheet: bsArr.map(r => ({
+      calendarYear:           r.calendarYear ?? r.date?.slice(0, 4) ?? '',
+      cashAndCashEquivalents: r.cashAndCashEquivalents ?? 0,
+      totalDebt:              r.totalDebt              ?? 0,
+    })),
+    cashFlow: cfArr.map(r => ({
+      calendarYear:       r.calendarYear ?? r.date?.slice(0, 4) ?? '',
+      operatingCashFlow:  r.operatingCashFlow  ?? 0,
+      capitalExpenditure: r.capitalExpenditure ?? 0,
+      freeCashFlow:       r.freeCashFlow        ?? 0,
+    })),
+  };
 }
 
 /* ─────────────────────────────────────────
@@ -1422,47 +1344,35 @@ function defaultGrowth(cashFlows) {
    PUBLIC COMPS
 ───────────────────────────────────────── */
 async function fetchQuote(ticker) {
-  // Try v7/finance/quote first (richer data)
-  try {
-    const r = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${ticker}`);
-    if (r.ok) {
-      const j = await r.json();
-      const q = j.quoteResponse?.result?.[0];
-      if (q) {
-        return {
-          symbol:       ticker,
-          name:         q.longName ?? q.shortName ?? ticker,
-          price:        q.regularMarketPrice     ?? 0,
-          mktCap:       q.marketCap              ?? 0,
-          ev:           q.enterpriseValue        ?? 0,
-          revenue:      q.totalRevenue           ?? 0,
-          ebitda:       q.ebitda                 ?? 0,
-          evEbitda:     q.enterpriseToEbitda     ?? null,
-          evRevenue:    q.enterpriseToRevenue    ?? null,
-          pe:           q.trailingPE             ?? null,
-          forwardPE:    q.forwardPE              ?? null,
-          beta:         q.beta                   ?? null,
-          grossMargin:  q.grossMargins           ?? null,
-          ebitdaMargin: q.ebitdaMargins          ?? null,
-          fcf:          q.freeCashflow           ?? 0,
-        };
-      }
-    }
-  } catch (_) {}
+  const [quoteArr, metricsArr] = await Promise.allSettled([
+    fmpGet(`/quote/${ticker}`),
+    fmpGet(`/key-metrics/${ticker}?period=annual&limit=1`),
+  ]);
 
-  // Fallback: v8/finance/chart (price + market cap only)
-  const r2 = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`);
-  if (!r2.ok) throw new Error(`HTTP ${r2.status}`);
-  const j2 = await r2.json();
-  const meta = j2.chart?.result?.[0]?.meta ?? {};
+  const q = quoteArr.status === 'fulfilled'   ? quoteArr.value[0]   : {};
+  const m = metricsArr.status === 'fulfilled' ? metricsArr.value[0] : {};
+
+  if (!q?.symbol) throw new Error(`No data for ${ticker}`);
+
   return {
     symbol:       ticker,
-    name:         meta.longName ?? meta.shortName ?? ticker,
-    price:        meta.regularMarketPrice ?? 0,
-    mktCap:       meta.marketCap          ?? 0,
-    ev:           0, revenue: 0, ebitda: 0,
-    evEbitda:     null, evRevenue: null, pe: null, forwardPE: null,
-    beta:         null, grossMargin: null, ebitdaMargin: null, fcf: 0,
+    name:         q.name         ?? ticker,
+    price:        q.price        ?? 0,
+    mktCap:       q.marketCap    ?? 0,
+    ev:           m.enterpriseValue       ?? 0,
+    revenue:      m.revenuePerShare != null && q.sharesOutstanding
+                  ? m.revenuePerShare * q.sharesOutstanding : 0,
+    ebitda:       m.enterpriseValueOverEBITDA != null && m.enterpriseValue
+                  ? m.enterpriseValue / m.enterpriseValueOverEBITDA : 0,
+    evEbitda:     m.enterpriseValueOverEBITDA ?? null,
+    evRevenue:    m.evToSales     ?? null,
+    pe:           q.pe            ?? null,
+    forwardPE:    null,
+    beta:         q.beta          ?? null,
+    grossMargin:  m.grossProfitMargin ?? null,
+    ebitdaMargin: m.ebitdaMargin      ?? null,
+    fcf:          m.freeCashFlowPerShare != null && q.sharesOutstanding
+                  ? m.freeCashFlowPerShare * q.sharesOutstanding : 0,
   };
 }
 
@@ -1891,13 +1801,15 @@ function onTickerInput(e) {
 
 async function fetchAC(q) {
   try {
-    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=10&newsCount=0&enableFuzzyQuery=false`;
-    const r = await fetch(url);
+    const key = getFMPKey();
+    if (!key) { closeAC(); return; }
+    const r = await fetch(`${FMP_BASE}/search?query=${encodeURIComponent(q)}&limit=10&apikey=${key}`);
+    if (!r.ok) { closeAC(); return; }
     const json = await r.json();
-    acResults = (json.quotes ?? [])
-      .filter(item => item.quoteType === 'EQUITY' && item.symbol && !item.symbol.includes('.'))
+    acResults = (json ?? [])
+      .filter(item => item.symbol && !item.symbol.includes('.') && item.exchangeShortName)
       .slice(0, 8)
-      .map(item => ({ symbol: item.symbol, name: item.shortname ?? item.longname ?? item.symbol }));
+      .map(item => ({ symbol: item.symbol, name: item.name ?? item.symbol }));
     acIndex = -1;
     renderAC();
   } catch (_) { closeAC(); }
