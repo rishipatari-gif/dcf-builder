@@ -817,7 +817,7 @@ document.addEventListener('DOMContentLoaded', () => {
    Financial Modeling Prep (FMP) — CORS-enabled, free tier 250 calls/day
    Get a free key at: financialmodelingprep.com/developer/docs
 ───────────────────────────────────────── */
-const FMP_BASE = 'https://financialmodelingprep.com/api/v3';
+const FMP_BASE = 'https://financialmodelingprep.com/stable';
 
 function getFMPKey() {
   return el('inp-api-key')?.value.trim() || localStorage.getItem('fmp_key') || '';
@@ -844,17 +844,16 @@ async function fetchFinancials(ticker) {
 
   txt('el-loading-txt', 'Fetching financial statements…');
   const [incomeArr, bsArr, cfArr, profArr] = await Promise.all([
-    fmpGet(`/income-statement/${symbol}?period=annual&limit=5`),
-    fmpGet(`/balance-sheet-statement/${symbol}?period=annual&limit=5`),
-    fmpGet(`/cash-flow-statement/${symbol}?period=annual&limit=5`),
-    fmpGet(`/profile/${symbol}`),
+    fmpGet(`/income-statement?symbol=${symbol}&period=annual&limit=5`),
+    fmpGet(`/balance-sheet-statement?symbol=${symbol}&period=annual&limit=5`),
+    fmpGet(`/cash-flow-statement?symbol=${symbol}&period=annual&limit=5`),
+    fmpGet(`/profile?symbol=${symbol}`),
   ]);
 
   if (cfArr.length < 2) throw new Error('Fewer than 2 years of cash flow data — try a different ticker');
 
   const prof   = profArr[0];
-  const shares = prof.sharesOutstanding
-    ?? (prof.mktCap && prof.price ? prof.mktCap / prof.price : 1);
+  const shares = prof.marketCap && prof.price ? prof.marketCap / prof.price : 1;
 
   return {
     profile: [{
@@ -862,24 +861,24 @@ async function fetchFinancials(ticker) {
       companyName:       prof.companyName ?? symbol,
       sector:            prof.sector ?? '',
       price:             prof.price ?? 0,
-      mktCap:            prof.mktCap ?? 0,
+      mktCap:            prof.marketCap ?? 0,
       beta:              prof.beta ?? 1.0,
       sharesOutstanding: shares,
     }],
     income: incomeArr.map(r => ({
-      calendarYear:    r.calendarYear ?? r.date?.slice(0, 4) ?? '',
+      calendarYear:    r.fiscalYear ?? r.date?.slice(0, 4) ?? '',
       revenue:         r.revenue         ?? 0,
       grossProfit:     r.grossProfit     ?? 0,
       operatingIncome: r.operatingIncome ?? 0,
       netIncome:       r.netIncome       ?? 0,
     })),
     balanceSheet: bsArr.map(r => ({
-      calendarYear:           r.calendarYear ?? r.date?.slice(0, 4) ?? '',
+      calendarYear:           r.fiscalYear ?? r.date?.slice(0, 4) ?? '',
       cashAndCashEquivalents: r.cashAndCashEquivalents ?? 0,
       totalDebt:              r.totalDebt              ?? 0,
     })),
     cashFlow: cfArr.map(r => ({
-      calendarYear:       r.calendarYear ?? r.date?.slice(0, 4) ?? '',
+      calendarYear:       r.fiscalYear ?? r.date?.slice(0, 4) ?? '',
       operatingCashFlow:  r.operatingCashFlow  ?? 0,
       capitalExpenditure: r.capitalExpenditure ?? 0,
       freeCashFlow:       r.freeCashFlow        ?? 0,
@@ -1344,35 +1343,36 @@ function defaultGrowth(cashFlows) {
    PUBLIC COMPS
 ───────────────────────────────────────── */
 async function fetchQuote(ticker) {
-  const [quoteArr, metricsArr] = await Promise.allSettled([
-    fmpGet(`/quote/${ticker}`),
-    fmpGet(`/key-metrics/${ticker}?period=annual&limit=1`),
+  const [profArr, metricsArr] = await Promise.allSettled([
+    fmpGet(`/profile?symbol=${ticker}`),
+    fmpGet(`/key-metrics?symbol=${ticker}&period=annual&limit=1`),
   ]);
 
-  const q = quoteArr.status === 'fulfilled'   ? quoteArr.value[0]   : {};
+  const p = profArr.status === 'fulfilled'    ? profArr.value[0]    : {};
   const m = metricsArr.status === 'fulfilled' ? metricsArr.value[0] : {};
 
-  if (!q?.symbol) throw new Error(`No data for ${ticker}`);
+  if (!p?.symbol) throw new Error(`No data for ${ticker}`);
+
+  const mktCap = p.marketCap ?? 0;
+  const price  = p.price ?? 0;
+  const ev     = m.enterpriseValue ?? 0;
 
   return {
     symbol:       ticker,
-    name:         q.name         ?? ticker,
-    price:        q.price        ?? 0,
-    mktCap:       q.marketCap    ?? 0,
-    ev:           m.enterpriseValue       ?? 0,
-    revenue:      m.revenuePerShare != null && q.sharesOutstanding
-                  ? m.revenuePerShare * q.sharesOutstanding : 0,
-    ebitda:       m.enterpriseValueOverEBITDA != null && m.enterpriseValue
-                  ? m.enterpriseValue / m.enterpriseValueOverEBITDA : 0,
-    evEbitda:     m.enterpriseValueOverEBITDA ?? null,
-    evRevenue:    m.evToSales     ?? null,
-    pe:           q.pe            ?? null,
+    name:         p.companyName  ?? ticker,
+    price,
+    mktCap,
+    ev,
+    revenue:      ev && m.evToSales   ? ev / m.evToSales   : 0,
+    ebitda:       ev && m.evToEBITDA  ? ev / m.evToEBITDA  : 0,
+    evEbitda:     m.evToEBITDA   ?? null,
+    evRevenue:    m.evToSales    ?? null,
+    pe:           mktCap && m.earningsYield > 0 ? 1 / m.earningsYield : null,
     forwardPE:    null,
-    beta:         q.beta          ?? null,
-    grossMargin:  m.grossProfitMargin ?? null,
-    ebitdaMargin: m.ebitdaMargin      ?? null,
-    fcf:          m.freeCashFlowPerShare != null && q.sharesOutstanding
-                  ? m.freeCashFlowPerShare * q.sharesOutstanding : 0,
+    beta:         p.beta         ?? null,
+    grossMargin:  null,
+    ebitdaMargin: null,
+    fcf:          ev && m.evToFreeCashFlow ? ev / m.evToFreeCashFlow : 0,
   };
 }
 
@@ -1803,11 +1803,11 @@ async function fetchAC(q) {
   try {
     const key = getFMPKey();
     if (!key) { closeAC(); return; }
-    const r = await fetch(`${FMP_BASE}/search?query=${encodeURIComponent(q)}&limit=10&apikey=${key}`);
+    const r = await fetch(`${FMP_BASE}/search-symbol?query=${encodeURIComponent(q)}&limit=10&apikey=${key}`);
     if (!r.ok) { closeAC(); return; }
     const json = await r.json();
     acResults = (json ?? [])
-      .filter(item => item.symbol && !item.symbol.includes('.') && item.exchangeShortName)
+      .filter(item => item.symbol && !item.symbol.includes('.') && item.exchange)
       .slice(0, 8)
       .map(item => ({ symbol: item.symbol, name: item.name ?? item.symbol }));
     acIndex = -1;
