@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DCF Builder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['EB Garamond', 'Georgia', 'serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    :root {
+      --bg:      #07090E;
+      --surface: #0D1117;
+      --raised:  #121820;
+      --border:  rgba(255,255,255,0.07);
+      --accent:  #00D4FF;
+      --green:   #00E887;
+      --red:     #FF4757;
+      --text:    #E2E8F0;
+      --muted:   #64748B;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'EB Garamond', Georgia, serif;
+      min-height: 100vh;
+    }
+
+    /* ── cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .card-raised {
+      background: var(--raised);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    /* ── inputs ── */
+    .field {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      letter-spacing: .01em;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .field:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,212,255,.12);
+    }
+    .field::placeholder { color: #374151; }
+
+    /* ── primary button ── */
+    .btn-primary {
+      background: var(--accent);
+      color: #07090E;
+      font-weight: 600;
+      font-size: 13px;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      cursor: pointer;
+      width: 100%;
+      transition: background .15s, transform .1s, box-shadow .15s;
+      box-shadow: 0 0 16px rgba(0,212,255,.2);
+    }
+    .btn-primary:hover  { background: #00BFDF; box-shadow: 0 0 24px rgba(0,212,255,.35); }
+    .btn-primary:active { transform: scale(.97); }
+    .btn-primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+    /* ── reset button ── */
+    .btn-reset {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 7px;
+      padding: 7px 13px;
+      color: #64748B;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: .04em;
+      cursor: pointer;
+      transition: color .15s, border-color .15s, background .15s, transform .1s;
+    }
+    .btn-reset:hover  { color: #E2E8F0; border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.04); }
+    .btn-reset:active { transform: scale(.96); }
+    .btn-reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+    /* ── range sliders ── */
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      background: #1F2937;
+      border-radius: 2px;
+      outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 15px;
+      height: 15px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(0,212,255,.5);
+      transition: box-shadow .15s;
+    }
+    input[type=range]:hover::-webkit-slider-thumb {
+      box-shadow: 0 0 12px rgba(0,212,255,.7);
+    }
+
+    /* ── label chips ── */
+    .chip {
+      font-size: 10px;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    /* ── spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 2px solid #1F2937;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+
+    /* ── fade-up animation ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-up { animation: fadeUp .35s ease forwards; }
+    .delay-1 { animation-delay: .08s; opacity: 0; }
+    .delay-2 { animation-delay: .16s; opacity: 0; }
+    .delay-3 { animation-delay: .24s; opacity: 0; }
+    .delay-4 { animation-delay: .32s; opacity: 0; }
+
+    /* ── tabs ── */
+    .tab-bar {
+      display: flex;
+      gap: 2px;
+      border-bottom: 1px solid rgba(255,255,255,.07);
+      padding-bottom: 0;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 10px 20px;
+      color: #475569;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: color .15s, border-color .15s;
+      margin-bottom: -1px;
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: #94A3B8; }
+    .tab-btn.tab-active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* ── sensitivity table ── */
+    .sens-table td, .sens-table th {
+      padding: 6px 10px;
+      text-align: center;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      border-radius: 4px;
+    }
+    .sens-table th { color: var(--muted); font-weight: 500; }
+
+    /* ── hist table ── */
+    .hist-table th {
+      font-size: 10px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 6px 10px;
+      text-align: right;
+      font-weight: 500;
+    }
+    .hist-table th:first-child { text-align: left; }
+    .hist-table td {
+      padding: 7px 10px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      text-align: right;
+      border-top: 1px solid rgba(255,255,255,.04);
+    }
+    .hist-table td:first-child { text-align: left; color: #94A3B8; }
+    .hist-table tr:hover td { background: rgba(255,255,255,.025); }
+
+    /* ── comps table ── */
+    .comps-table th {
+      font-size: 10px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 6px 10px;
+      text-align: right;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .comps-table th:first-child { text-align: left; }
+    .comps-table td {
+      padding: 8px 10px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      text-align: right;
+      border-top: 1px solid rgba(255,255,255,.04);
+      white-space: nowrap;
+    }
+    .comps-table td:first-child { text-align: left; }
+    .comps-table tr:hover td { background: rgba(255,255,255,.025); }
+    .comps-table tr.comp-subject td { background: rgba(0,212,255,.05); }
+    .comps-table tr.comp-loading td { color: #374151; }
+
+    /* ── scenario cards ── */
+    .scenario-btn {
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,.07);
+      border-radius: 8px;
+      padding: 12px 14px;
+      text-align: left;
+      cursor: pointer;
+      transition: background .15s, border-color .15s, transform .1s;
+      width: 100%;
+    }
+    .scenario-btn:hover  { background: var(--raised); }
+    .scenario-btn:active { transform: scale(.97); }
+    .scenario-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .scenario-btn.sc-active-bear { border-color: rgba(255,71,87,.55);  background: rgba(255,71,87,.05);  }
+    .scenario-btn.sc-active-base { border-color: rgba(0,212,255,.55);  background: rgba(0,212,255,.04);  }
+    .scenario-btn.sc-active-bull { border-color: rgba(0,232,135,.55);  background: rgba(0,232,135,.04);  }
+
+    /* ── autocomplete dropdown ── */
+    .ac-wrap { position: relative; }
+    .ac-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0; right: 0;
+      background: #0D1117;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 10px;
+      overflow: hidden;
+      z-index: 100;
+      box-shadow: 0 8px 32px rgba(0,0,0,.7), 0 2px 8px rgba(0,0,0,.4);
+    }
+    .ac-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 13px;
+      cursor: pointer;
+      transition: background .1s;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+    }
+    .ac-item:last-child { border-bottom: none; }
+    .ac-item:hover, .ac-item.ac-focused { background: rgba(0,212,255,.07); }
+    .ac-item-symbol {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      min-width: 56px;
+      flex-shrink: 0;
+    }
+    .ac-item-name {
+      font-size: 13px;
+      color: #94A3B8;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* ── sensitivity table hover ── */
+    .sens-clickable {
+      cursor: pointer;
+      transition: filter .12s, transform .1s;
+    }
+    .sens-clickable:hover  { filter: brightness(1.35); }
+    .sens-clickable:active { transform: scale(.93); }
+
+    /* ── lbo model table ── */
+    .lbo-table th {
+      font-size: 10px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 6px 10px;
+      text-align: right;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .lbo-table th:first-child { text-align: left; }
+    .lbo-table td {
+      padding: 7px 10px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      text-align: right;
+      border-top: 1px solid rgba(255,255,255,.04);
+    }
+    .lbo-table td:first-child { text-align: left; color: #94A3B8; font-family: 'EB Garamond', Georgia, serif; font-size: 13px; }
+    .lbo-table tr.lbo-exit-row td { border-top: 1px solid rgba(0,212,255,.2); color: var(--accent); }
+
+    /* ── lbo sens table ── */
+    .lbo-sens td, .lbo-sens th {
+      padding: 6px 12px;
+      text-align: center;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      border-radius: 4px;
+    }
+    .lbo-sens th { color: var(--muted); font-weight: 500; }
+  </style>
+</head>
+
+<body class="p-5 md:p-8">
+<div class="max-w-screen-xl mx-auto space-y-5">
+
+  <!-- ── HEADER ── -->
+  <div class="flex items-end justify-between">
+    <div>
+      <h1 class="font-mono font-bold text-xl tracking-tight" style="color:var(--accent);">DCF Builder</h1>
+      <p class="text-xs mt-1" style="color:var(--muted);">Discounted Cash Flow · Public Comps · LBO — powered by SEC EDGAR &amp; Yahoo Finance</p>
+    </div>
+    <button id="btn-reset" class="btn-reset hidden" onclick="resetDCF()" title="Reset sliders to initial defaults for this ticker">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+        <path d="M3 3v5h5"/>
+      </svg>
+      Reset
+    </button>
+  </div>
+
+  <!-- ── INPUT ROW ── -->
+  <div class="card p-5">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+      <div>
+        <div class="chip mb-2">Ticker Symbol</div>
+        <div class="ac-wrap">
+          <input id="inp-ticker" class="field uppercase" type="text" placeholder="AAPL, MSFT, NVDA…"
+                 oninput="onTickerInput(event)"
+                 onkeydown="onTickerKeydown(event)"
+                 onblur="scheduleCloseAC()"
+                 autocomplete="off" spellcheck="false" />
+          <div id="ac-dropdown" class="ac-dropdown" style="display:none;"></div>
+        </div>
+      </div>
+      <div class="flex flex-col justify-end">
+        <button class="btn-primary" onclick="runDCF()">Run Analysis</button>
+      </div>
+    </div>
+    <p class="text-xs mt-3" style="color:#374151;">
+      Financials via SEC EDGAR 10-K · price &amp; comps via Yahoo Finance · no API key required
+    </p>
+  </div>
+
+  <!-- ── LOADING ── -->
+  <div id="el-loading" class="card p-10 text-center hidden">
+    <div class="spinner mx-auto"></div>
+    <p id="el-loading-txt" class="text-sm mt-4 font-mono" style="color:var(--muted);">Fetching financials…</p>
+  </div>
+
+  <!-- ── ERROR ── -->
+  <div id="el-error" class="card p-4 hidden" style="border-color:rgba(255,71,87,.3);">
+    <p id="el-error-txt" class="text-sm font-mono" style="color:var(--red);"></p>
+  </div>
+
+  <!-- ════════════════════ RESULTS ════════════════════ -->
+  <div id="el-results" class="hidden space-y-5">
+
+    <!-- ── TAB BAR ── -->
+    <div class="tab-bar">
+      <button id="tab-btn-dcf"   class="tab-btn tab-active" onclick="switchTab('dcf')">DCF Model</button>
+      <button id="tab-btn-comps" class="tab-btn"            onclick="switchTab('comps')">Public Comps</button>
+      <button id="tab-btn-lbo"   class="tab-btn"            onclick="switchTab('lbo')">LBO Returns</button>
+    </div>
+
+    <!-- ════════ TAB: DCF ════════ -->
+    <div id="tab-dcf" class="space-y-5">
+
+      <!-- ── COMPANY HEADER ── -->
+      <div class="card p-5 fade-up" id="card-header">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-3 flex-wrap">
+              <span id="r-ticker" class="font-mono font-bold text-2xl" style="color:var(--accent);"></span>
+              <span id="r-name"   class="text-base font-medium text-slate-300"></span>
+              <span id="r-sector" class="chip px-2 py-1 rounded" style="border:1px solid rgba(255,255,255,.08);"></span>
+            </div>
+            <div class="flex gap-7 mt-3">
+              <div><div class="chip">Current Price</div> <div id="r-price"  class="font-mono font-semibold mt-1"></div></div>
+              <div><div class="chip">Market Cap</div>    <div id="r-mktcap" class="font-mono font-semibold mt-1"></div></div>
+              <div><div class="chip">Beta</div>          <div id="r-beta"   class="font-mono font-semibold mt-1"></div></div>
+              <div><div class="chip">TTM FCF</div>       <div id="r-fcf"    class="font-mono font-semibold mt-1"></div></div>
+            </div>
+          </div>
+          <!-- Intrinsic value callout -->
+          <div class="card-raised px-5 py-4 text-right">
+            <div class="chip mb-1">Intrinsic Value (Base)</div>
+            <div id="r-intrinsic" class="font-mono font-bold text-3xl" style="color:var(--green);"></div>
+            <div id="r-upside"    class="font-mono text-sm mt-1"></div>
+          </div>
+        </div>
+
+        <!-- ── SCENARIO CARDS ── -->
+        <div class="mt-5">
+          <div class="chip mb-3">Scenario Analysis — click any card to apply</div>
+          <div class="grid grid-cols-3 gap-3">
+
+            <button id="sc-bear" class="scenario-btn" onclick="applyScenario('bear')">
+              <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#FF4757;font-weight:600;">Bear</div>
+              <div id="sc-bear-iv"   class="font-mono font-bold text-xl mt-1" style="color:#FF4757;"></div>
+              <div id="sc-bear-up"   class="font-mono text-xs"                style="color:#7F1D1D;"></div>
+              <div id="sc-bear-info" class="text-xs mt-2"                     style="color:#475569;"></div>
+            </button>
+
+            <button id="sc-base" class="scenario-btn" onclick="applyScenario('base')">
+              <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#00D4FF;font-weight:600;">Base</div>
+              <div id="sc-base-iv"   class="font-mono font-bold text-xl mt-1" style="color:#00D4FF;"></div>
+              <div id="sc-base-up"   class="font-mono text-xs"                style="color:#164E63;"></div>
+              <div id="sc-base-info" class="text-xs mt-2"                     style="color:#475569;"></div>
+            </button>
+
+            <button id="sc-bull" class="scenario-btn" onclick="applyScenario('bull')">
+              <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#00E887;font-weight:600;">Bull</div>
+              <div id="sc-bull-iv"   class="font-mono font-bold text-xl mt-1" style="color:#00E887;"></div>
+              <div id="sc-bull-up"   class="font-mono text-xs"                style="color:#14532D;"></div>
+              <div id="sc-bull-info" class="text-xs mt-2"                     style="color:#475569;"></div>
+            </button>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── ASSUMPTIONS + WATERFALL ── -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+        <!-- Assumptions panel -->
+        <div class="card p-5 fade-up delay-1">
+          <div class="chip mb-5">DCF Assumptions</div>
+          <div class="space-y-5">
+
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-sm text-slate-300">WACC</label>
+                <span id="sl-wacc-val" class="font-mono text-sm" style="color:var(--accent);"></span>
+              </div>
+              <input id="sl-wacc" type="range" min="5" max="20" step="0.5" oninput="onSlider()" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-sm text-slate-300">Near-term FCF Growth</label>
+                <span id="sl-growth-val" class="font-mono text-sm" style="color:var(--accent);"></span>
+              </div>
+              <input id="sl-growth" type="range" min="-20" max="60" step="0.5" oninput="onSlider()" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-sm text-slate-300">Terminal Growth Rate</label>
+                <span id="sl-tgr-val" class="font-mono text-sm" style="color:var(--accent);"></span>
+              </div>
+              <input id="sl-tgr" type="range" min="0.5" max="5" step="0.25" oninput="onSlider()" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-sm text-slate-300">Projection Years</label>
+                <span id="sl-yrs-val" class="font-mono text-sm" style="color:var(--accent);"></span>
+              </div>
+              <input id="sl-yrs" type="range" min="3" max="10" step="1" oninput="onSlider()" />
+            </div>
+          </div>
+
+          <!-- Bridge summary -->
+          <div class="mt-5 pt-5 space-y-2" style="border-top:1px solid var(--border);">
+            <div class="flex justify-between text-sm">
+              <span style="color:var(--muted);">PV of FCFs</span>
+              <span id="bk-pvfcf" class="font-mono text-slate-200"></span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span style="color:var(--muted);">PV of Terminal Value</span>
+              <span id="bk-pvtv"  class="font-mono text-slate-200"></span>
+            </div>
+            <div class="flex justify-between text-sm pt-1" style="border-top:1px solid var(--border);">
+              <span style="color:var(--muted);">Enterprise Value</span>
+              <span id="bk-ev"   class="font-mono font-medium text-slate-100"></span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span style="color:var(--muted);">+ Cash &amp; Equivalents</span>
+              <span id="bk-cash" class="font-mono" style="color:var(--green);"></span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span style="color:var(--muted);">− Total Debt</span>
+              <span id="bk-debt" class="font-mono" style="color:var(--red);"></span>
+            </div>
+            <div class="flex justify-between text-sm pt-1 font-semibold" style="border-top:1px solid var(--border);">
+              <span class="text-slate-200">Equity Value</span>
+              <span id="bk-equity" class="font-mono text-slate-100"></span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span style="color:var(--muted);">÷ Shares</span>
+              <span id="bk-shares" class="font-mono text-slate-400"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Valuation bridge -->
+        <div class="lg:col-span-2 card p-5 fade-up delay-2">
+          <div class="chip mb-4">Valuation Bridge</div>
+          <div id="chart-waterfall"></div>
+        </div>
+      </div>
+
+      <!-- ── FCF CHART + SENSITIVITY ── -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+        <div class="card p-5 fade-up delay-2">
+          <div class="chip mb-4">Free Cash Flow — History &amp; Projection</div>
+          <div style="position:relative; height:230px;">
+            <canvas id="chart-fcf"></canvas>
+          </div>
+        </div>
+
+        <div class="card p-5 fade-up delay-3">
+          <div class="chip mb-1">Sensitivity Table</div>
+          <p class="text-xs mb-4" style="color:#374151;">Intrinsic value / share  ·  WACC (rows) × Terminal Growth (cols)</p>
+          <div id="el-sensitivity" class="overflow-x-auto"></div>
+        </div>
+      </div>
+
+      <!-- ── HISTORICAL FINANCIALS ── -->
+      <div class="card p-5 fade-up delay-4">
+        <div class="chip mb-4">Historical Financials</div>
+        <div class="overflow-x-auto">
+          <table class="hist-table w-full" id="el-hist-table">
+            <thead>
+              <tr>
+                <th class="text-left">Year</th>
+                <th>Revenue</th>
+                <th>Gross Profit</th>
+                <th>EBIT</th>
+                <th>Net Income</th>
+                <th>Op. CF</th>
+                <th>CapEx</th>
+                <th>Free CF</th>
+                <th>FCF Margin</th>
+              </tr>
+            </thead>
+            <tbody id="el-hist-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /tab-dcf -->
+
+
+    <!-- ════════ TAB: PUBLIC COMPS ════════ -->
+    <div id="tab-comps" class="hidden space-y-5">
+
+      <div class="card p-5">
+        <div class="flex flex-wrap items-start justify-between gap-4 mb-5">
+          <div>
+            <div class="chip mb-1">Public Comparables</div>
+            <p class="text-xs" style="color:#374151;">Sector peers auto-loaded · data via Yahoo Finance · add or remove tickers below</p>
+          </div>
+          <div class="flex gap-2 items-center">
+            <input id="comps-add-input" class="field" style="width:170px;" type="text"
+                   placeholder="Add ticker…"
+                   onkeydown="if(event.key==='Enter') addComp()"
+                   autocomplete="off" spellcheck="false" />
+            <button class="btn-primary" style="width:auto;padding:10px 16px;flex-shrink:0;" onclick="addComp()">Add</button>
+          </div>
+        </div>
+
+        <div id="comps-loading" class="hidden text-center py-8">
+          <div class="spinner mx-auto"></div>
+          <p class="text-sm mt-3 font-mono" style="color:var(--muted);">Fetching comparables…</p>
+        </div>
+
+        <div id="comps-table-wrap" class="overflow-x-auto"></div>
+
+        <p class="text-xs mt-4" style="color:#1F2937;">
+          EV/EBITDA, EV/Rev, P/E as reported by Yahoo Finance · N/A = not meaningful or unavailable
+        </p>
+      </div>
+
+      <!-- Stats summary row -->
+      <div id="comps-stats" class="hidden grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="card p-4">
+          <div class="chip mb-1">Median EV/EBITDA</div>
+          <div id="cs-evebitda" class="font-mono font-semibold text-xl mt-1" style="color:var(--accent);"></div>
+        </div>
+        <div class="card p-4">
+          <div class="chip mb-1">Median EV/Revenue</div>
+          <div id="cs-evrev" class="font-mono font-semibold text-xl mt-1" style="color:var(--accent);"></div>
+        </div>
+        <div class="card p-4">
+          <div class="chip mb-1">Median P/E</div>
+          <div id="cs-pe" class="font-mono font-semibold text-xl mt-1" style="color:var(--accent);"></div>
+        </div>
+        <div class="card p-4">
+          <div class="chip mb-1">Median Beta</div>
+          <div id="cs-beta" class="font-mono font-semibold text-xl mt-1" style="color:var(--accent);"></div>
+        </div>
+      </div>
+
+    </div><!-- /tab-comps -->
+
+
+    <!-- ════════ TAB: LBO RETURNS ════════ -->
+    <div id="tab-lbo" class="hidden space-y-5">
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+        <!-- Entry Assumptions -->
+        <div class="card p-5">
+          <div class="chip mb-4">Entry Assumptions</div>
+          <div class="space-y-4">
+
+            <div>
+              <div class="chip mb-2">Entry Price / Share ($)</div>
+              <input id="lbo-entry-price" class="field" type="number" step="0.01" min="0" oninput="onLBO()" />
+            </div>
+
+            <div>
+              <div class="chip mb-2">LTM EBIT / approx. EBITDA ($M)</div>
+              <input id="lbo-ebitda" class="field" type="number" step="1" oninput="onLBO()" />
+            </div>
+
+            <div class="card-raised px-3 py-2 flex justify-between items-center">
+              <span class="text-xs" style="color:var(--muted);">Implied Entry EV/EBITDA</span>
+              <span id="lbo-entry-mult-disp" class="font-mono font-semibold" style="color:var(--accent);">—</span>
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-sm text-slate-300">EBITDA Growth / yr</label>
+                <span id="lbo-growth-val" class="font-mono text-sm" style="color:var(--accent);"></span>
+              </div>
+              <input id="lbo-growth" type="range" min="-10" max="30" step="0.5" value="8" oninput="onLBO()" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-sm text-slate-300">Hold Period</label>
+                <span id="lbo-years-val" class="font-mono text-sm" style="color:var(--accent);"></span>
+              </div>
+              <input id="lbo-years" type="range" min="2" max="10" step="1" value="5" oninput="onLBO()" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Financing Structure -->
+        <div class="card p-5">
+          <div class="chip mb-4">Financing Structure</div>
+          <div class="space-y-4">
+
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-sm text-slate-300">Debt / Total EV</label>
+                <span id="lbo-leverage-val" class="font-mono text-sm" style="color:var(--accent);"></span>
+              </div>
+              <input id="lbo-leverage" type="range" min="10" max="80" step="5" value="50" oninput="onLBO()" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-sm text-slate-300">Debt Interest Rate</label>
+                <span id="lbo-rate-val" class="font-mono text-sm" style="color:var(--accent);"></span>
+              </div>
+              <input id="lbo-rate" type="range" min="4" max="14" step="0.25" value="7" oninput="onLBO()" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-sm text-slate-300">% of Post-Tax FCF to Paydown</label>
+                <span id="lbo-paydown-val" class="font-mono text-sm" style="color:var(--accent);"></span>
+              </div>
+              <input id="lbo-paydown" type="range" min="0" max="100" step="5" value="70" oninput="onLBO()" />
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-sm text-slate-300">Tax Rate</label>
+                <span id="lbo-tax-val" class="font-mono text-sm" style="color:var(--accent);"></span>
+              </div>
+              <input id="lbo-tax" type="range" min="10" max="35" step="1" value="25" oninput="onLBO()" />
+            </div>
+
+            <!-- Capital structure summary -->
+            <div class="mt-2 pt-3 space-y-2" style="border-top:1px solid var(--border);">
+              <div class="flex justify-between text-sm">
+                <span style="color:var(--muted);">Entry EV</span>
+                <span id="lbo-entry-ev" class="font-mono text-slate-300"></span>
+              </div>
+              <div class="flex justify-between text-sm">
+                <span style="color:var(--muted);">New LBO Debt</span>
+                <span id="lbo-entry-debt" class="font-mono" style="color:var(--red);"></span>
+              </div>
+              <div class="flex justify-between text-sm font-semibold pt-1" style="border-top:1px solid var(--border);">
+                <span class="text-slate-200">Equity Check</span>
+                <span id="lbo-entry-equity" class="font-mono" style="color:var(--accent);"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Exit & Returns -->
+        <div class="card p-5">
+          <div class="chip mb-4">Exit &amp; Returns</div>
+          <div class="space-y-4">
+
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-sm text-slate-300">Exit EV/EBITDA</label>
+                <span id="lbo-exit-mult-val" class="font-mono text-sm" style="color:var(--accent);"></span>
+              </div>
+              <input id="lbo-exit-mult" type="range" min="4" max="25" step="0.5" value="10" oninput="onLBO()" />
+            </div>
+
+            <div class="space-y-2 mt-1">
+              <div class="flex justify-between text-sm">
+                <span style="color:var(--muted);">Exit EBITDA</span>
+                <span id="lbo-exit-ebitda" class="font-mono text-slate-300"></span>
+              </div>
+              <div class="flex justify-between text-sm">
+                <span style="color:var(--muted);">Exit EV</span>
+                <span id="lbo-exit-ev" class="font-mono text-slate-300"></span>
+              </div>
+              <div class="flex justify-between text-sm">
+                <span style="color:var(--muted);">Remaining Debt</span>
+                <span id="lbo-exit-debt" class="font-mono" style="color:var(--red);"></span>
+              </div>
+              <div class="flex justify-between text-sm font-semibold pt-1" style="border-top:1px solid var(--border);">
+                <span class="text-slate-200">Exit Equity</span>
+                <span id="lbo-exit-equity" class="font-mono text-slate-100"></span>
+              </div>
+            </div>
+
+            <!-- Returns callout -->
+            <div class="card-raised p-4 mt-2">
+              <div class="flex justify-between items-center mb-3">
+                <span class="chip">MOIC</span>
+                <span id="lbo-moic" class="font-mono font-bold text-2xl" style="color:var(--green);"></span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="chip">IRR</span>
+                <span id="lbo-irr"  class="font-mono font-bold text-2xl" style="color:var(--green);"></span>
+              </div>
+              <div id="lbo-returns-note" class="text-xs mt-3" style="color:#374151;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Year-by-year model + sensitivity -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+        <div class="card p-5">
+          <div class="chip mb-4">Year-by-Year Model</div>
+          <div id="lbo-model-table" class="overflow-x-auto"></div>
+        </div>
+
+        <div class="card p-5">
+          <div class="chip mb-1">IRR Sensitivity</div>
+          <p class="text-xs mb-4" style="color:#374151;">Entry EV/EBITDA (rows) × Exit EV/EBITDA (cols) · colored by IRR threshold</p>
+          <div id="lbo-sensitivity" class="overflow-x-auto"></div>
+        </div>
+      </div>
+
+    </div><!-- /tab-lbo -->
+
+  </div><!-- /results -->
+
+</div><!-- /container -->
+
+<script>
+/* ─────────────────────────────────────────
+   Globals
+───────────────────────────────────────── */
+let G = null;              // raw EDGAR + Yahoo data
+let chartFCF = null;       // FCF chart instance
+let scenarios = {};        // bear / base / bull snapshots
+let initialDefaults = null;// slider defaults at load time
+let activeTab = 'dcf';     // current active tab
+let compTickers = [];      // current comp ticker list
+let compsLoaded = false;   // flag to avoid re-loading on every tab switch
+let lboInited = false;     // flag for LBO init
+
+/* ─────────────────────────────────────────
+   Formatting helpers
+───────────────────────────────────────── */
+function fmtB(v) {
+  const abs = Math.abs(v);
+  if (abs >= 1e12) return `$${(v/1e12).toFixed(2)}T`;
+  if (abs >= 1e9)  return `$${(v/1e9).toFixed(2)}B`;
+  if (abs >= 1e6)  return `$${(v/1e6).toFixed(1)}M`;
+  return `$${v.toLocaleString()}`;
+}
+function fmtPct(v, decimals = 1) {
+  return `${v >= 0 ? '+' : ''}${v.toFixed(decimals)}%`;
+}
+function fmtX(v, decimals = 1) {
+  return v != null && isFinite(v) && v > 0 ? `${v.toFixed(decimals)}x` : '—';
+}
+function fmtMultiple(v) {
+  return v != null && isFinite(v) && v > 0 ? v.toFixed(1) + 'x' : '—';
+}
+function sign(v, pos = '#00E887', neg = '#FF4757') {
+  return v >= 0 ? pos : neg;
+}
+function median(arr) {
+  const s = [...arr].sort((a,b) => a-b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 !== 0 ? s[m] : (s[m-1] + s[m]) / 2;
+}
+
+/* ─────────────────────────────────────────
+   Tab switching
+───────────────────────────────────────── */
+function switchTab(name) {
+  ['dcf','comps','lbo'].forEach(t => {
+    el(`tab-${t}`).classList.toggle('hidden', t !== name);
+    el(`tab-btn-${t}`).classList.toggle('tab-active', t === name);
+  });
+  activeTab = name;
+
+  if (name === 'comps' && !compsLoaded && G) loadComps();
+  if (name === 'lbo'   && !lboInited  && G) initLBO();
+
+  // reset button only relevant on DCF tab
+  if (initialDefaults) {
+    el('btn-reset').classList.toggle('hidden', name !== 'dcf');
+  }
+}
+
+/* ─────────────────────────────────────────
+   DCF engine
+───────────────────────────────────────── */
+function dcf(data, wacc, growthPct, tgrPct, years) {
+  const cfs   = [...data.cashFlow].reverse();
+  const bss   = [...data.balanceSheet].reverse();
+  const prof  = data.profile[0];
+
+  const latestCF = cfs[cfs.length - 1];
+  let baseFCF = latestCF.freeCashFlow ?? (latestCF.operatingCashFlow + latestCF.capitalExpenditure);
+
+  if (baseFCF <= 0) {
+    const posYears = cfs.filter(y => {
+      const f = y.freeCashFlow ?? (y.operatingCashFlow + y.capitalExpenditure);
+      return f > 0;
+    });
+    if (posYears.length > 0) {
+      baseFCF = posYears.reduce((s, y) =>
+        s + (y.freeCashFlow ?? (y.operatingCashFlow + y.capitalExpenditure)), 0) / posYears.length;
+    }
+  }
+
+  const latestBS = bss[bss.length - 1];
+  const cash  = latestBS.cashAndCashEquivalents ?? latestBS.cash ?? 0;
+  const debt  = latestBS.totalDebt ?? ((latestBS.shortTermDebt ?? 0) + (latestBS.longTermDebt ?? 0));
+  const shares = prof.sharesOutstanding > 0
+    ? prof.sharesOutstanding
+    : (prof.mktCap / prof.price);
+
+  const w = wacc  / 100;
+  const g = growthPct / 100;
+  const t = tgrPct / 100;
+
+  const projected = [];
+  let fcf = baseFCF;
+  for (let i = 1; i <= years; i++) {
+    fcf = fcf * (1 + g);
+    const pv = fcf / Math.pow(1 + w, i);
+    projected.push({ year: i, fcf, pv });
+  }
+
+  const pvFCFs   = projected.reduce((s, y) => s + y.pv, 0);
+  const tvNumer  = fcf * (1 + t);
+  const termVal  = tvNumer / (w - t);
+  const pvTV     = termVal / Math.pow(1 + w, years);
+  const ev       = pvFCFs + pvTV;
+  const equity   = ev + cash - debt;
+  const ivps     = equity / shares;
+
+  return { projected, pvFCFs, pvTV, termVal, ev, cash, debt, equity, shares, ivps, baseFCF };
+}
+
+/* ─────────────────────────────────────────
+   Slider reads
+───────────────────────────────────────── */
+function sliders() {
+  return {
+    wacc:   parseFloat(el('sl-wacc').value),
+    growth: parseFloat(el('sl-growth').value),
+    tgr:    parseFloat(el('sl-tgr').value),
+    yrs:    parseInt(el('sl-yrs').value),
+  };
+}
+
+function setSliderDisplays(s) {
+  el('sl-wacc-val').textContent   = `${s.wacc.toFixed(1)}%`;
+  el('sl-growth-val').textContent = `${s.growth >= 0 ? '+' : ''}${s.growth.toFixed(1)}%`;
+  el('sl-tgr-val').textContent    = `${s.tgr.toFixed(2)}%`;
+  el('sl-yrs-val').textContent    = `${s.yrs}Y`;
+}
+
+/* ─────────────────────────────────────────
+   Reset to initial defaults
+───────────────────────────────────────── */
+function resetDCF() {
+  if (!initialDefaults) return;
+  el('sl-wacc').value   = initialDefaults.wacc;
+  el('sl-growth').value = initialDefaults.growth;
+  el('sl-tgr').value    = initialDefaults.tgr;
+  el('sl-yrs').value    = initialDefaults.yrs;
+  onSlider();
+}
+
+/* ─────────────────────────────────────────
+   Main DCF update (called on slider move)
+───────────────────────────────────────── */
+function onSlider() {
+  if (!G) return;
+  const s = sliders();
+  setSliderDisplays(s);
+
+  const res   = dcf(G, s.wacc, s.growth, s.tgr, s.yrs);
+  const prof  = G.profile[0];
+  const price = prof.price;
+
+  const upside = (res.ivps - price) / price * 100;
+  el('r-intrinsic').textContent = `$${res.ivps.toFixed(2)}`;
+  const uEl = el('r-upside');
+  uEl.textContent = `${fmtPct(upside)} vs $${price.toFixed(2)}`;
+  uEl.style.color = sign(upside);
+
+  el('bk-pvfcf').textContent  = fmtB(res.pvFCFs);
+  el('bk-pvtv').textContent   = fmtB(res.pvTV);
+  el('bk-ev').textContent     = fmtB(res.ev);
+  el('bk-cash').textContent   = `+${fmtB(res.cash)}`;
+  el('bk-debt').textContent   = `−${fmtB(res.debt)}`;
+  el('bk-equity').textContent = fmtB(res.equity);
+  el('bk-shares').textContent = `${(res.shares/1e9).toFixed(3)}B shs`;
+
+  const bearA = { wacc: s.wacc + 2, growth: s.growth * 0.75, tgr: Math.max(0.5, s.tgr - 0.5), yrs: s.yrs };
+  const bullA = { wacc: Math.max(5, s.wacc - 2), growth: s.growth * 1.25, tgr: Math.min(5, s.tgr + 0.5), yrs: s.yrs };
+  scenarios = {
+    bear: { ...bearA, res: dcf(G, bearA.wacc, bearA.growth, bearA.tgr, bearA.yrs) },
+    base: { wacc: s.wacc, growth: s.growth, tgr: s.tgr, yrs: s.yrs, res },
+    bull: { ...bullA, res: dcf(G, bullA.wacc, bullA.growth, bullA.tgr, bullA.yrs) },
+  };
+  updateScenarioCards(price);
+
+  renderWaterfall(res);
+  renderFCFChart(res, s.yrs, s.growth);
+  renderSensitivity(s);
+}
+
+/* ─────────────────────────────────────────
+   Scenario cards
+───────────────────────────────────────── */
+function updateScenarioCards(price) {
+  const s = sliders();
+  ['bear', 'base', 'bull'].forEach(name => {
+    const sc = scenarios[name];
+    if (!sc) return;
+    const iv  = sc.res.ivps;
+    const up  = price ? (iv - price) / price * 100 : 0;
+    el(`sc-${name}-iv`).textContent   = `$${iv.toFixed(2)}`;
+    el(`sc-${name}-up`).textContent   = `${fmtPct(up)} vs mkt`;
+    el(`sc-${name}-up`).style.color   = up >= 0 ? '#4ADE80' : '#F87171';
+    el(`sc-${name}-info`).textContent =
+      `WACC ${sc.wacc.toFixed(1)}%  ·  g ${sc.growth.toFixed(1)}%  ·  TV ${sc.tgr.toFixed(1)}%`;
+
+    const btn = el(`sc-${name}`);
+    btn.classList.remove('sc-active-bear', 'sc-active-base', 'sc-active-bull');
+    const match =
+      Math.abs(sc.wacc   - s.wacc)   < 0.05 &&
+      Math.abs(sc.growth - s.growth) < 0.1  &&
+      Math.abs(sc.tgr    - s.tgr)    < 0.05;
+    if (match) btn.classList.add(`sc-active-${name}`);
+  });
+}
+
+function applyScenario(name) {
+  const sc = scenarios[name];
+  if (!sc) return;
+  el('sl-wacc').value   = sc.wacc;
+  el('sl-growth').value = sc.growth;
+  el('sl-tgr').value    = sc.tgr;
+  el('sl-yrs').value    = sc.yrs;
+  onSlider();
+}
+
+function applyCell(wacc, tgr) {
+  el('sl-wacc').value = wacc;
+  el('sl-tgr').value  = tgr;
+  onSlider();
+}
+
+/* ─────────────────────────────────────────
+   Valuation Bridge — pure HTML/CSS rows
+───────────────────────────────────────── */
+function renderWaterfall(res) {
+  const wrap  = document.getElementById('chart-waterfall');
+  const price = G?.profile[0]?.price ?? 0;
+  const upside = price ? (res.ivps - price) / price * 100 : 0;
+
+  const ref = Math.max(res.pvFCFs, res.pvTV, res.ev, res.equity, res.cash, res.debt, 1);
+  const bar = (v) => {
+    const w = Math.max(3, Math.min(98, Math.abs(v) / ref * 98));
+    return `${w.toFixed(1)}%`;
+  };
+
+  const row = ({ label, value, bg, border, indent = false, dim = false }) => {
+    const color = value < 0 ? '#FF4757' : (dim ? '#94A3B8' : '#E2E8F0');
+    const pad   = indent ? 'padding-left:14px;' : '';
+    return `
+      <div class="bridge-row" style="${pad}">
+        <span class="bridge-label" style="color:${dim ? '#64748B' : '#94A3B8'};">${label}</span>
+        <div class="bridge-bar-track">
+          <div class="bridge-bar" style="width:${bar(value)};background:${bg};border:1px solid ${border};"></div>
+        </div>
+        <span class="bridge-val font-mono" style="color:${color};">${fmtB(value)}</span>
+      </div>`;
+  };
+
+  wrap.innerHTML = `
+    <style>
+      .bridge-row { display:flex; align-items:center; gap:10px; padding:5px 0; }
+      .bridge-label { font-size:12px; width:155px; flex-shrink:0; line-height:1.3; }
+      .bridge-bar-track { flex:1; height:20px; min-width:0; background:rgba(255,255,255,.03); border-radius:3px; overflow:hidden; }
+      .bridge-bar { height:100%; border-radius:3px; transition:width .35s cubic-bezier(.25,.46,.45,.94); }
+      .bridge-val { font-size:12px; width:76px; text-align:right; flex-shrink:0; }
+      .bridge-divider { display:flex; align-items:center; gap:8px; margin:6px 0 4px; padding-left:165px; }
+      .bridge-divider span { font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:#334155; white-space:nowrap; }
+      .bridge-divider::after { content:''; flex:1; height:1px; background:rgba(255,255,255,.06); }
+    </style>
+
+    ${row({ label:'PV of FCFs',        value:res.pvFCFs, bg:'rgba(0,212,255,.28)', border:'rgba(0,212,255,.5)' })}
+    ${row({ label:'PV Terminal Value', value:res.pvTV,   bg:'rgba(0,212,255,.16)', border:'rgba(0,212,255,.35)' })}
+
+    <div style="display:flex;align-items:center;gap:8px;margin:6px 0 4px;">
+      <span style="color:#475569;font-size:10px;letter-spacing:.05em;text-transform:uppercase;">Enterprise Value</span>
+      <div style="flex:1;height:1px;background:rgba(255,255,255,.08);"></div>
+      <span class="font-mono" style="font-size:12px;font-weight:600;color:#E2E8F0;flex-shrink:0;">${fmtB(res.ev)}</span>
+    </div>
+
+    ${row({ label:'+ Cash & Equivalents', value:res.cash,  bg:'rgba(0,232,135,.25)', border:'rgba(0,232,135,.5)', indent:true })}
+    ${row({ label:'− Total Debt',          value:-res.debt, bg:'rgba(255,71,87,.25)',  border:'rgba(255,71,87,.5)',  indent:true })}
+
+    <div style="display:flex;align-items:center;gap:8px;margin:8px 0 4px;">
+      <span style="color:#475569;font-size:10px;letter-spacing:.05em;text-transform:uppercase;">Equity Value</span>
+      <div style="flex:1;height:1px;background:rgba(255,255,255,.08);"></div>
+      <span class="font-mono" style="font-size:12px;font-weight:600;color:#E2E8F0;flex-shrink:0;">${fmtB(res.equity)}</span>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-top:12px;padding-top:12px;border-top:1px solid rgba(0,212,255,.2);">
+      <div>
+        <div style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#475569;">
+          ÷ ${(res.shares/1e9).toFixed(3)}B shares outstanding
+        </div>
+        <div style="font-size:10px;color:#334155;margin-top:3px;">Source: SEC 10-K</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="font-mono font-bold" style="font-size:24px;color:${upside >= 0 ? '#00E887' : '#FF4757'};">
+          $${res.ivps.toFixed(2)}
+        </div>
+        <div class="font-mono" style="font-size:11px;margin-top:2px;color:${upside >= 0 ? '#00E887' : '#FF4757'};">
+          ${fmtPct(upside)} vs $${price.toFixed(2)} market
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ─────────────────────────────────────────
+   FCF chart
+───────────────────────────────────────── */
+function renderFCFChart(res, years, growthPct) {
+  const ctx = document.getElementById('chart-fcf').getContext('2d');
+  if (chartFCF) chartFCF.destroy();
+
+  const cfs     = [...G.cashFlow].reverse();
+  const hLabels = cfs.map(y => y.calendarYear ?? y.date?.slice(0, 4));
+  const hFCF    = cfs.map(y =>
+    ((y.freeCashFlow ?? (y.operatingCashFlow + y.capitalExpenditure)) / 1e9));
+
+  const curYear = new Date().getFullYear();
+  const pLabels = res.projected.map((_, i) => `${curYear + i}`);
+  const pFCF    = res.projected.map(y => y.fcf / 1e9);
+
+  const nullH = new Array(hLabels.length).fill(null);
+  const nullP = new Array(pLabels.length).fill(null);
+
+  chartFCF = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: [...hLabels, ...pLabels],
+      datasets: [
+        {
+          label: 'Historical FCF',
+          data: [...hFCF, ...nullP],
+          backgroundColor: 'rgba(100,116,139,.45)',
+          borderColor: '#64748B',
+          borderWidth: 1,
+          borderRadius: 3,
+        },
+        {
+          label: 'Projected FCF',
+          data: [...nullH, ...pFCF],
+          backgroundColor: 'rgba(0,212,255,.25)',
+          borderColor: '#00D4FF',
+          borderWidth: 1,
+          borderRadius: 3,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#64748B', font: { size: 10 }, boxWidth: 10, padding: 12 } },
+        tooltip: {
+          filter: item => item.raw !== null,
+          callbacks: { label: c => c.raw !== null ? `$${c.raw.toFixed(2)}B` : null },
+          backgroundColor: '#0D1117',
+          borderColor: 'rgba(255,255,255,.08)',
+          borderWidth: 1,
+          titleColor: '#E2E8F0',
+          bodyColor: '#94A3B8',
+          padding: 10,
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#475569', font: { size: 10 } } },
+        y: {
+          grid: { color: 'rgba(255,255,255,.04)' },
+          ticks: { color: '#475569', font: { size: 10 }, callback: v => `$${v.toFixed(1)}B` },
+        },
+      },
+    },
+  });
+}
+
+/* ─────────────────────────────────────────
+   DCF Sensitivity table
+───────────────────────────────────────── */
+function renderSensitivity(s) {
+  const waccRow = [-2, -1, 0, 1, 2].map(d => +(s.wacc + d).toFixed(1));
+  const tgrCol  = [-1, -0.5, 0, 0.5, 1].map(d => Math.max(0.5, +(s.tgr + d).toFixed(2)));
+  const price   = G.profile[0].price;
+
+  let html = '<table class="sens-table w-full"><thead><tr>';
+  html += '<th style="text-align:left">WACC \\ g</th>';
+  tgrCol.forEach(g => { html += `<th>${g.toFixed(1)}%</th>`; });
+  html += '</tr></thead><tbody>';
+
+  waccRow.forEach(w => {
+    html += '<tr>';
+    html += `<th style="text-align:left">${w.toFixed(1)}%</th>`;
+    tgrCol.forEach(tg => {
+      if (w <= tg) { html += `<td style="color:#1F2937">N/A</td>`; return; }
+      const r  = dcf(G, w, s.growth, tg, s.yrs);
+      const iv = r.ivps;
+      const up = (iv - price) / price * 100;
+      let bg, color;
+      if      (up >  30) { bg = 'rgba(0,232,135,.22)';  color = '#00E887'; }
+      else if (up >  10) { bg = 'rgba(0,232,135,.11)';  color = '#4ADE80'; }
+      else if (up > -10) { bg = 'rgba(255,255,255,.04)'; color = '#94A3B8'; }
+      else if (up > -30) { bg = 'rgba(255,71,87,.11)';  color = '#FCA5A5'; }
+      else               { bg = 'rgba(255,71,87,.22)';  color = '#FF4757'; }
+      const isBase  = (w === s.wacc && tg === s.tgr);
+      const outline = isBase ? '; outline:2px solid rgba(0,212,255,.6); outline-offset:-2px;' : '';
+      html += `<td class="sens-clickable" onclick="applyCell(${w},${tg})"
+        title="WACC ${w}% · TV growth ${tg}% · ${fmtPct(up)} vs market"
+        style="background:${bg};color:${color}${outline}">$${iv.toFixed(0)}</td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  el('el-sensitivity').innerHTML = html;
+}
+
+/* ─────────────────────────────────────────
+   Historical table
+───────────────────────────────────────── */
+function renderHistorical() {
+  const cfs  = [...G.cashFlow].reverse();
+  const incs = [...G.income].reverse();
+  const tbody = el('el-hist-body');
+  tbody.innerHTML = '';
+
+  cfs.forEach((cf, i) => {
+    const inc   = incs[i] ?? {};
+    const year  = cf.calendarYear ?? cf.date?.slice(0, 4);
+    const rev   = inc.revenue ?? 0;
+    const gp    = inc.grossProfit ?? 0;
+    const ebit  = inc.operatingIncome ?? 0;
+    const ni    = inc.netIncome ?? 0;
+    const ocf   = cf.operatingCashFlow ?? 0;
+    const capex = cf.capitalExpenditure ?? 0;
+    const fcf   = cf.freeCashFlow ?? (ocf + capex);
+    const margin = rev ? (fcf / rev * 100) : 0;
+
+    const c = v => v >= 0 ? '#E2E8F0' : '#FF4757';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${year}</td>
+      <td style="color:#E2E8F0">${fmtB(rev)}</td>
+      <td style="color:${c(gp)}">${fmtB(gp)}</td>
+      <td style="color:${c(ebit)}">${fmtB(ebit)}</td>
+      <td style="color:${c(ni)}">${fmtB(ni)}</td>
+      <td style="color:#E2E8F0">${fmtB(ocf)}</td>
+      <td style="color:#FF4757">${fmtB(capex)}</td>
+      <td style="color:${fcf >= 0 ? '#00D4FF' : '#FF4757'}">${fmtB(fcf)}</td>
+      <td style="color:#64748B">${margin.toFixed(1)}%</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ─────────────────────────────────────────
+   WACC / growth defaults
+───────────────────────────────────────── */
+function defaultWACC(beta) {
+  const re = 4 + beta * 5.5;
+  return Math.max(7, Math.min(18, re * 0.7 + 5 * 0.3));
+}
+
+function defaultGrowth(cashFlows) {
+  const fcfs = [...cashFlows].reverse().map(y =>
+    y.freeCashFlow ?? (y.operatingCashFlow + y.capitalExpenditure));
+  const positives = fcfs.filter(v => v > 0);
+  if (positives.length < 2) return 10;
+  const rates = [];
+  for (let i = 1; i < Math.min(positives.length, 4); i++) {
+    rates.push((positives[i] / positives[i-1] - 1) * 100);
+  }
+  const avg = rates.reduce((a,b) => a+b, 0) / rates.length;
+  return Math.max(-10, Math.min(40, avg));
+}
+
+/* ─────────────────────────────────────────
+   PUBLIC COMPS
+───────────────────────────────────────── */
+async function fetchQuote(ticker) {
+  const r = await fetch(`/api/quote/${ticker}`);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+async function loadComps() {
+  if (!G) return;
+  const subject = G.profile[0].symbol;
+
+  el('comps-loading').classList.remove('hidden');
+  el('comps-table-wrap').innerHTML = '';
+  el('comps-stats').classList.add('hidden');
+
+  // Fetch actual recommended comps from Yahoo Finance
+  let peers = [];
+  try {
+    const r = await fetch(`/api/comps/${subject}`);
+    const json = await r.json();
+    peers = json.symbols ?? [];
+  } catch (_) {}
+
+  // Append user-added tickers that aren't already in the list
+  const userAdded = compTickers.filter(t => t !== subject && !peers.includes(t));
+  peers = [...peers, ...userAdded];
+
+  // Fetch subject + peers in parallel
+  const all = [subject, ...peers];
+  const results = await Promise.allSettled(all.map(t => fetchQuote(t)));
+
+  const comps = results.map((r, i) => ({
+    ticker: all[i],
+    isSubject: all[i] === subject,
+    data: r.status === 'fulfilled' ? r.value : null,
+    error: r.status === 'rejected',
+  }));
+
+  el('comps-loading').classList.add('hidden');
+  renderCompsTable(comps, subject, G.profile[0].sector ?? '');
+}
+
+function addComp() {
+  const input = el('comps-add-input');
+  const t = input.value.trim().toUpperCase();
+  if (!t) return;
+  input.value = '';
+  if (!compTickers.includes(t)) compTickers.push(t);
+  compsLoaded = false;
+  loadComps();
+}
+
+function renderCompsTable(comps, subject, sector) {
+  const cols = [
+    { key: 'mktCap',    label: 'Mkt Cap',    fmt: v => fmtB(v) },
+    { key: 'ev',        label: 'EV',          fmt: v => fmtB(v) },
+    { key: 'revenue',   label: 'Revenue',     fmt: v => fmtB(v) },
+    { key: 'ebitda',    label: 'EBITDA',      fmt: v => v > 0 ? fmtB(v) : '—' },
+    { key: 'evEbitda',  label: 'EV/EBITDA',   fmt: v => fmtMultiple(v) },
+    { key: 'evRevenue', label: 'EV/Rev',      fmt: v => fmtMultiple(v) },
+    { key: 'pe',        label: 'P/E',         fmt: v => fmtMultiple(v) },
+    { key: 'grossMargin', label: 'Gross Margin', fmt: v => v != null ? `${(v*100).toFixed(1)}%` : '—' },
+    { key: 'beta',      label: 'Beta',        fmt: v => v != null ? v.toFixed(2) : '—' },
+  ];
+
+  let html = `<table class="comps-table w-full">
+    <thead><tr>
+      <th style="text-align:left;">Ticker</th>
+      <th style="text-align:left;">Company</th>
+      <th>Price</th>
+      ${cols.map(c => `<th>${c.label}</th>`).join('')}
+      <th></th>
+    </tr></thead>
+    <tbody>`;
+
+  // Compute medians for highlighting
+  const validData = comps.filter(c => c.data && !c.error).map(c => c.data);
+  const medEvEbitda = validData.map(d => d.evEbitda).filter(v => v > 0 && isFinite(v));
+  const medPE       = validData.map(d => d.pe).filter(v => v > 0 && isFinite(v));
+
+  comps.forEach(({ ticker, isSubject, data, error }) => {
+    const cls = isSubject ? 'comp-subject' : '';
+    if (error || !data) {
+      html += `<tr class="${cls} comp-loading">
+        <td><span class="font-mono font-semibold" style="color:${isSubject ? 'var(--accent)' : '#94A3B8'};">${ticker}</span></td>
+        <td colspan="${cols.length + 2}" style="color:#374151;font-family:sans-serif;font-size:12px;">Failed to load</td>
+      </tr>`;
+      return;
+    }
+
+    const accentColor = isSubject ? 'var(--accent)' : '#94A3B8';
+    html += `<tr class="${cls}">
+      <td>
+        <div class="flex items-center gap-2">
+          ${isSubject ? '<span style="width:6px;height:6px;background:var(--accent);border-radius:50%;flex-shrink:0;display:inline-block;"></span>' : ''}
+          <span class="font-mono font-semibold" style="color:${accentColor};">${ticker}</span>
+        </div>
+      </td>
+      <td style="color:#94A3B8;font-family:\'EB Garamond\',serif;font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;">${data.name}</td>
+      <td class="font-mono" style="color:#E2E8F0;">$${data.price > 0 ? data.price.toFixed(2) : '—'}</td>
+      ${cols.map(c => {
+        const v = data[c.key];
+        return `<td class="font-mono" style="color:#94A3B8;">${c.fmt(v)}</td>`;
+      }).join('')}
+      <td>
+        ${!isSubject ? `<button onclick="removeComp('${ticker}')" style="font-size:10px;color:#374151;background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:4px;" onmouseover="this.style.color='#FF4757'" onmouseout="this.style.color='#374151'">✕</button>` : ''}
+      </td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  el('comps-table-wrap').innerHTML = html;
+  compsLoaded = true;
+
+  // Update stats summary
+  const validEV   = validData.map(d => d.evEbitda).filter(v => v > 0 && isFinite(v));
+  const validRev  = validData.map(d => d.evRevenue).filter(v => v > 0 && isFinite(v));
+  const validPE   = validData.map(d => d.pe).filter(v => v > 0 && isFinite(v));
+  const validBeta = validData.map(d => d.beta).filter(v => v != null && isFinite(v));
+
+  if (validData.length > 0) {
+    el('cs-evebitda').textContent = validEV.length   ? fmtMultiple(median(validEV))   : '—';
+    el('cs-evrev').textContent    = validRev.length  ? fmtMultiple(median(validRev))  : '—';
+    el('cs-pe').textContent       = validPE.length   ? fmtMultiple(median(validPE))   : '—';
+    el('cs-beta').textContent     = validBeta.length ? median(validBeta).toFixed(2)   : '—';
+    el('comps-stats').classList.remove('hidden');
+  }
+}
+
+function removeComp(ticker) {
+  compTickers = compTickers.filter(t => t !== ticker);
+  compsLoaded = false;
+  loadComps();
+}
+
+/* ─────────────────────────────────────────
+   LBO CALCULATOR
+───────────────────────────────────────── */
+function initLBO() {
+  if (!G) return;
+  const prof    = G.profile[0];
+  const latestBS  = [...G.balanceSheet].reverse().slice(-1)[0] ?? {};
+  const latestInc = [...G.income].reverse().slice(-1)[0] ?? {};
+
+  const ebitApprox = latestInc.operatingIncome > 0
+    ? latestInc.operatingIncome
+    : (latestInc.netIncome > 0 ? latestInc.netIncome : prof.mktCap * 0.05);
+  const ebitdaM = (ebitApprox / 1e6).toFixed(0);
+
+  el('lbo-entry-price').value = prof.price.toFixed(2);
+  el('lbo-ebitda').value      = ebitdaM;
+  el('lbo-growth').value      = 8;
+  el('lbo-leverage').value    = 50;
+  el('lbo-rate').value        = 7;
+  el('lbo-years').value       = 5;
+  el('lbo-paydown').value     = 70;
+  el('lbo-tax').value         = 25;
+
+  // Set exit multiple close to implied entry multiple
+  const netDebt  = (latestBS.totalDebt ?? 0) - (latestBS.cashAndCashEquivalents ?? 0);
+  const impliedEV = prof.mktCap + netDebt;
+  const impliedMult = ebitApprox > 0 ? impliedEV / ebitApprox : 10;
+  const exitMult = Math.max(4, Math.min(25, parseFloat(impliedMult.toFixed(1))));
+  el('lbo-exit-mult').value = exitMult;
+
+  lboInited = true;
+  onLBO();
+}
+
+function onLBO() {
+  const entryPrice = parseFloat(el('lbo-entry-price').value) || 0;
+  const ebitdaM    = parseFloat(el('lbo-ebitda').value)      || 0;
+  const ebitda     = ebitdaM * 1e6;
+  const growthPct  = parseFloat(el('lbo-growth').value);
+  const leveragePct= parseFloat(el('lbo-leverage').value);
+  const ratePct    = parseFloat(el('lbo-rate').value);
+  const years      = parseInt(el('lbo-years').value);
+  const paydownPct = parseFloat(el('lbo-paydown').value);
+  const taxPct     = parseFloat(el('lbo-tax').value);
+  const exitMult   = parseFloat(el('lbo-exit-mult').value);
+
+  // Update labels
+  el('lbo-growth-val').textContent   = `${growthPct >= 0 ? '+' : ''}${growthPct.toFixed(1)}%`;
+  el('lbo-leverage-val').textContent = `${leveragePct.toFixed(0)}%`;
+  el('lbo-rate-val').textContent     = `${ratePct.toFixed(2)}%`;
+  el('lbo-years-val').textContent    = `${years}Y`;
+  el('lbo-paydown-val').textContent  = `${paydownPct.toFixed(0)}%`;
+  el('lbo-tax-val').textContent      = `${taxPct.toFixed(0)}%`;
+  el('lbo-exit-mult-val').textContent = `${exitMult.toFixed(1)}x`;
+
+  if (!G || entryPrice <= 0 || ebitdaM <= 0) return;
+
+  const prof   = G.profile[0];
+  const latestBS = [...G.balanceSheet].reverse().slice(-1)[0] ?? {};
+  const shares = prof.sharesOutstanding > 0 ? prof.sharesOutstanding : (prof.mktCap / prof.price);
+
+  // Entry EV = market cap at entry price + existing net debt
+  const existingDebt = latestBS.totalDebt ?? 0;
+  const existingCash = latestBS.cashAndCashEquivalents ?? 0;
+  const entryMarketCap = entryPrice * shares;
+  const entryEV = entryMarketCap + existingDebt - existingCash;
+
+  const entryMultiple = ebitda > 0 ? entryEV / ebitda : 0;
+  el('lbo-entry-mult-disp').textContent = `${entryMultiple.toFixed(1)}x`;
+
+  const leverage     = leveragePct / 100;
+  const rate         = ratePct / 100;
+  const growth       = growthPct / 100;
+  const paydown      = paydownPct / 100;
+  const tax          = taxPct / 100;
+
+  const lboDebt      = entryEV * leverage;
+  const entryEquity  = entryEV * (1 - leverage);
+
+  el('lbo-entry-ev').textContent     = fmtB(entryEV);
+  el('lbo-entry-debt').textContent   = fmtB(lboDebt);
+  el('lbo-entry-equity').textContent = fmtB(entryEquity);
+
+  // Year-by-year model
+  let curEBITDA = ebitda;
+  let curDebt   = lboDebt;
+  const rows = [];
+
+  for (let y = 1; y <= years; y++) {
+    curEBITDA = curEBITDA * (1 + growth);
+    const interest     = curDebt * rate;
+    const ebit         = curEBITDA - interest;
+    const fcf          = Math.max(0, ebit * (1 - tax));
+    const debtPaydown  = fcf * paydown;
+    curDebt            = Math.max(0, curDebt - debtPaydown);
+    rows.push({
+      year: y,
+      ebitda:        curEBITDA,
+      interest,
+      ebit,
+      fcf,
+      debtPaydown,
+      remainingDebt: curDebt,
+    });
+  }
+
+  const exitEBITDA  = rows[rows.length - 1].ebitda;
+  const exitDebt    = rows[rows.length - 1].remainingDebt;
+  const exitEV      = exitEBITDA * exitMult;
+  const exitEquity  = Math.max(0, exitEV - exitDebt);
+
+  const moic = entryEquity > 0 ? exitEquity / entryEquity : 0;
+  const irr  = (entryEquity > 0 && exitEquity > 0 && years > 0)
+    ? Math.pow(moic, 1 / years) - 1 : 0;
+
+  el('lbo-exit-ebitda').textContent = fmtB(exitEBITDA);
+  el('lbo-exit-ev').textContent     = fmtB(exitEV);
+  el('lbo-exit-debt').textContent   = fmtB(exitDebt);
+  el('lbo-exit-equity').textContent = fmtB(exitEquity);
+  el('lbo-moic').textContent        = `${moic.toFixed(2)}x`;
+  el('lbo-irr').textContent         = `${(irr * 100).toFixed(1)}%`;
+
+  const irrColor =
+    irr >= 0.25 ? '#00E887' :
+    irr >= 0.20 ? '#4ADE80' :
+    irr >= 0.15 ? '#00D4FF' :
+    irr >= 0.10 ? '#94A3B8' : '#FF4757';
+  el('lbo-moic').style.color = irrColor;
+  el('lbo-irr').style.color  = irrColor;
+
+  const debtPaydownTotal = lboDebt - exitDebt;
+  el('lbo-returns-note').textContent =
+    `Entry equity $${(entryEquity/1e6).toFixed(0)}M · debt paid down ${fmtB(debtPaydownTotal)} over ${years}Y`;
+
+  renderLBOTable(rows, ebitda, entryEV, lboDebt, exitEV, exitEquity);
+  renderLBOSensitivity(entryEquity, ebitda, growth, rate, years, paydown, tax, exitMult);
+}
+
+function renderLBOTable(rows, entryEBITDA, entryEV, entryDebt, exitEV, exitEquity) {
+  let html = `<table class="lbo-table w-full">
+    <thead><tr>
+      <th style="text-align:left;">Year</th>
+      <th>EBITDA</th>
+      <th>Interest</th>
+      <th>EBIT</th>
+      <th>Post-Tax FCF</th>
+      <th>Debt Paydown</th>
+      <th>Remaining Debt</th>
+    </tr></thead>
+    <tbody>`;
+
+  // Entry row
+  html += `<tr>
+    <td style="color:var(--muted);">Entry</td>
+    <td class="font-mono" style="color:#94A3B8;">${fmtB(entryEBITDA)}</td>
+    <td class="font-mono" style="color:#94A3B8;">—</td>
+    <td class="font-mono" style="color:#94A3B8;">—</td>
+    <td class="font-mono" style="color:#94A3B8;">—</td>
+    <td class="font-mono" style="color:#94A3B8;">—</td>
+    <td class="font-mono" style="color:var(--red);">${fmtB(entryDebt)}</td>
+  </tr>`;
+
+  rows.forEach((r, i) => {
+    const isLast = i === rows.length - 1;
+    html += `<tr class="${isLast ? 'lbo-exit-row' : ''}">
+      <td>${isLast ? `Year ${r.year} (Exit)` : `Year ${r.year}`}</td>
+      <td class="font-mono" style="color:#E2E8F0;">${fmtB(r.ebitda)}</td>
+      <td class="font-mono" style="color:var(--red);">(${fmtB(r.interest)})</td>
+      <td class="font-mono" style="color:${r.ebit >= 0 ? '#94A3B8' : 'var(--red)'};">${fmtB(r.ebit)}</td>
+      <td class="font-mono" style="color:${r.fcf >= 0 ? 'var(--green)' : 'var(--red)'};">${fmtB(r.fcf)}</td>
+      <td class="font-mono" style="color:var(--green);">${fmtB(r.debtPaydown)}</td>
+      <td class="font-mono" style="color:var(--red);">${fmtB(r.remainingDebt)}</td>
+    </tr>`;
+  });
+
+  html += `</tbody></table>`;
+  el('lbo-model-table').innerHTML = html;
+}
+
+function renderLBOSensitivity(entryEquity, entryEBITDA, growth, rate, years, paydown, tax, currentExitMult) {
+  // Find implied entry multiple from entryEquity and entryEBITDA
+  // entryEV = entryEquity / (1 - leverage); leverage from rate, but let's just use current
+  // Simpler: vary around a ±2 range of entry multiple using entryEV derived from entryEquity * (1/(1-lev))
+
+  const entryMultBase = parseFloat(el('lbo-entry-mult-disp').textContent) || 10;
+  const leveragePct   = parseFloat(el('lbo-leverage').value) / 100;
+  const entryEBITDA_M = parseFloat(el('lbo-ebitda').value) * 1e6;
+
+  const entryMults = [-2,-1,0,1,2].map(d => Math.max(3, +(entryMultBase + d).toFixed(1)));
+  const exitMults  = [-2,-1,0,1,2].map(d => Math.max(3, +(currentExitMult + d).toFixed(1)));
+
+  function calcReturns(entMult, exMult) {
+    const ev         = entryEBITDA_M * entMult;
+    const debt0      = ev * leveragePct;
+    const eq         = ev * (1 - leveragePct);
+    if (eq <= 0) return { moic: 0, irr: 0 };
+
+    let curEB  = entryEBITDA_M;
+    let curD   = debt0;
+    for (let y = 1; y <= years; y++) {
+      curEB = curEB * (1 + growth);
+      const interest = curD * rate;
+      const ebit     = curEB - interest;
+      const fcf      = Math.max(0, ebit * (1 - tax));
+      curD = Math.max(0, curD - fcf * paydown);
+    }
+    const exitEBIT = curEB;
+    const exitD    = curD;
+    const exEV     = exitEBIT * exMult;
+    const exEq     = Math.max(0, exEV - exitD);
+    const moic     = exEq / eq;
+    const irr      = moic > 0 ? Math.pow(moic, 1/years) - 1 : 0;
+    return { moic, irr };
+  }
+
+  let html = `<table class="lbo-sens w-full"><thead><tr>
+    <th style="text-align:left;">Entry \\ Exit</th>`;
+  exitMults.forEach(x => { html += `<th>${x.toFixed(1)}x</th>`; });
+  html += '</tr></thead><tbody>';
+
+  entryMults.forEach(en => {
+    html += '<tr>';
+    html += `<th style="text-align:left;color:var(--muted);">${en.toFixed(1)}x</th>`;
+    exitMults.forEach(ex => {
+      const { irr } = calcReturns(en, ex);
+      const irrPct = irr * 100;
+      let bg, color;
+      if      (irrPct >= 25) { bg = 'rgba(0,232,135,.22)';  color = '#00E887'; }
+      else if (irrPct >= 20) { bg = 'rgba(0,232,135,.11)';  color = '#4ADE80'; }
+      else if (irrPct >= 15) { bg = 'rgba(0,212,255,.10)';  color = '#00D4FF'; }
+      else if (irrPct >= 10) { bg = 'rgba(255,255,255,.04)'; color = '#64748B'; }
+      else                   { bg = 'rgba(255,71,87,.18)';  color = '#FF4757'; }
+      const isBase = (en === entryMults[2] && ex === currentExitMult);
+      const outline = isBase ? ';outline:2px solid rgba(0,212,255,.55);outline-offset:-2px;' : '';
+      html += `<td style="background:${bg};color:${color}${outline};">${irrPct.toFixed(0)}%</td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  el('lbo-sensitivity').innerHTML = html;
+}
+
+/* ─────────────────────────────────────────
+   Fetch + render
+───────────────────────────────────────── */
+async function runDCF() {
+  const ticker = el('inp-ticker').value.trim().toUpperCase();
+  if (!ticker) { showError('Enter a ticker symbol'); return; }
+
+  hide('el-error');
+  hide('el-results');
+  show('el-loading');
+
+  // Reset tab state for new ticker
+  compsLoaded = false;
+  lboInited   = false;
+  compTickers = [];
+
+  try {
+    txt('el-loading-txt', 'Fetching SEC EDGAR financials…');
+    const resp = await fetch(`/api/financials/${ticker}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error ?? `HTTP ${resp.status}`);
+
+    G = data;
+    const prof = G.profile[0];
+
+    el('r-ticker').textContent  = prof.symbol;
+    el('r-name').textContent    = prof.companyName;
+    el('r-sector').textContent  = prof.sector ?? '';
+    el('r-price').textContent   = `$${prof.price.toFixed(2)}`;
+    el('r-mktcap').textContent  = fmtB(prof.mktCap);
+    el('r-beta').textContent    = (prof.beta ?? 0).toFixed(2);
+
+    const latestCF = G.cashFlow[0];
+    const baseFCF  = latestCF.freeCashFlow ?? (latestCF.operatingCashFlow + latestCF.capitalExpenditure);
+    el('r-fcf').textContent = fmtB(baseFCF);
+    el('r-fcf').style.color = sign(baseFCF);
+
+    // Set slider defaults
+    const wacc   = defaultWACC(prof.beta ?? 1.0);
+    const growth = defaultGrowth(G.cashFlow);
+    el('sl-wacc').value   = wacc;
+    el('sl-growth').value = growth;
+    el('sl-tgr').value    = 2.5;
+    el('sl-yrs').value    = 5;
+    initialDefaults = { wacc, growth, tgr: 2.5, yrs: 5 };
+
+    renderHistorical();
+    hide('el-loading');
+    show('el-results');
+
+    // Ensure DCF tab is active
+    switchTab('dcf');
+    onSlider();
+
+    // Show reset button
+    el('btn-reset').classList.remove('hidden');
+
+    // Start loading comps in the background immediately
+    loadComps();
+
+  } catch (err) {
+    hide('el-loading');
+    showError(err.message);
+  }
+}
+
+/* ─────────────────────────────────────────
+   DOM helpers
+───────────────────────────────────────── */
+const el   = id => document.getElementById(id);
+const show = id => el(id).classList.remove('hidden');
+const hide = id => el(id).classList.add('hidden');
+const txt  = (id, t) => { el(id).textContent = t; };
+
+function showError(msg) {
+  el('el-error-txt').textContent = `Error: ${msg}`;
+  show('el-error');
+}
+
+/* ─────────────────────────────────────────
+   Ticker Autocomplete
+───────────────────────────────────────── */
+let acResults  = [];
+let acIndex    = -1;
+let acDebounce = null;
+let acCloseTimer = null;
+
+function onTickerInput(e) {
+  const q = e.target.value.trim();
+  clearTimeout(acDebounce);
+  if (!q || q.length < 1) { closeAC(); return; }
+  acDebounce = setTimeout(() => fetchAC(q), 200);
+}
+
+async function fetchAC(q) {
+  try {
+    const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+    const json = await r.json();
+    acResults = json.quotes ?? [];
+    acIndex = -1;
+    renderAC();
+  } catch (_) { closeAC(); }
+}
+
+function renderAC() {
+  const dd = el('ac-dropdown');
+  if (!acResults.length) { closeAC(); return; }
+  dd.innerHTML = acResults.map((item, i) => `
+    <div class="ac-item" data-i="${i}"
+         onmousedown="selectAC(${i})"
+         onmouseover="hoverAC(${i})">
+      <span class="ac-item-symbol">${item.symbol}</span>
+      <span class="ac-item-name">${item.name}</span>
+    </div>`).join('');
+  dd.style.display = 'block';
+}
+
+function hoverAC(i) {
+  acIndex = i;
+  [...el('ac-dropdown').querySelectorAll('.ac-item')].forEach((el, j) =>
+    el.classList.toggle('ac-focused', j === i));
+}
+
+function selectAC(i) {
+  const item = acResults[i];
+  if (!item) return;
+  el('inp-ticker').value = item.symbol;
+  closeAC();
+  runDCF();
+}
+
+function closeAC() {
+  el('ac-dropdown').style.display = 'none';
+  acResults = [];
+  acIndex = -1;
+}
+
+function scheduleCloseAC() {
+  acCloseTimer = setTimeout(closeAC, 150);
+}
+
+function onTickerKeydown(e) {
+  if (e.key === 'Enter') {
+    if (acIndex >= 0 && acResults[acIndex]) {
+      e.preventDefault();
+      selectAC(acIndex);
+    } else {
+      closeAC();
+      runDCF();
+    }
+    return;
+  }
+  if (e.key === 'Escape') { closeAC(); return; }
+  if (!acResults.length) return;
+
+  const items = el('ac-dropdown').querySelectorAll('.ac-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    acIndex = Math.min(acIndex + 1, acResults.length - 1);
+    items.forEach((el, j) => el.classList.toggle('ac-focused', j === acIndex));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    acIndex = Math.max(acIndex - 1, 0);
+    items.forEach((el, j) => el.classList.toggle('ac-focused', j === acIndex));
+  }
+}
+</script>
+</body>
+</html>
